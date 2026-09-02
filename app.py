@@ -35,12 +35,8 @@ if uploaded_file is not None:
             elif any(kw in col_upper for kw in dest_keywords):
                 col_dest = col
 
-        # 如果没匹配到，回退到位置（C=2, K=10, M=12）
         if col_aircraft is None or col_origin is None or col_dest is None:
-            st.warning(
-                f"未通过列名匹配，将按位置读取：C列(飞机号)、K列(出发地)、M列(到达地)。"
-                f"当前表头：{list(df.columns)}"
-            )
+            st.warning(f"未通过列名匹配，将按位置读取：C列(飞机号)、K列(出发地)、M列(到达地)。\n当前表头：{list(df.columns)}")
             col_aircraft = df.columns[2] if len(df.columns) > 2 else None
             col_origin = df.columns[10] if len(df.columns) > 10 else None
             col_dest = df.columns[12] if len(df.columns) > 12 else None
@@ -49,18 +45,28 @@ if uploaded_file is not None:
             st.error("Excel 列数不足，至少需要包含 C(飞机号)、K(出发地)、M(到达地) 三列。")
             st.stop()
 
-        # 提取数据
+        # ---------- 提取并清洗数据 ----------
         flights = []
         for idx, row in df.iterrows():
             aircraft = row[col_aircraft]
             origin = row[col_origin]
             dest = row[col_dest]
+            # 跳过空值
             if pd.notna(aircraft) and pd.notna(origin) and pd.notna(dest):
-                flights.append({
-                    "aircraft": str(aircraft).strip(),
-                    "origin": str(origin).strip().upper(),
-                    "dest": str(dest).strip().upper()
-                })
+                aircraft_str = str(aircraft).strip()
+                origin_str = str(origin).strip().upper()
+                dest_str = str(dest).strip().upper()
+                # 数据有效性校验：
+                # 1. 起降机场必须为4位字母
+                # 2. 飞机号不能包含中文字符（排除表头行）
+                if (len(origin_str) == 4 and origin_str.isalpha() and
+                    len(dest_str) == 4 and dest_str.isalpha() and
+                    not any('\u4e00' <= ch <= '\u9fff' for ch in aircraft_str)):
+                    flights.append({
+                        "aircraft": aircraft_str,
+                        "origin": origin_str,
+                        "dest": dest_str
+                    })
 
         if not flights:
             st.error("❌ 未读取到有效航段数据，请检查列是否包含正确的四字码和注册号。")
@@ -72,10 +78,9 @@ if uploaded_file is not None:
             preview_df = pd.DataFrame(flights).head(5)
             st.dataframe(preview_df, use_container_width=True)
 
-        # ---------- 生成 JavaScript 脚本（使用占位符避免 Python {} 冲突） ----------
+        # ---------- 生成 JavaScript 脚本（使用占位符） ----------
         flights_json = json.dumps(flights, ensure_ascii=False, indent=2)
 
-        # 这里使用普通字符串模板，用 __FLIGHT_DATA__ 占位，再通过 replace 注入
         js_template = """
 // ============================================================
 //  Arinc 飞行计划自动填表脚本（逐条模式）
@@ -107,7 +112,18 @@ function fillFlight(index) {
         console.error("未找到 id='Aircraft' 的下拉框");
         return false;
     }
-    sel.value = data.aircraft;
+    var found = false;
+    for (var opt of sel.options) {
+        if (opt.value === data.aircraft) {
+            opt.selected = true;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        console.warn("飞机号 " + data.aircraft + " 不在下拉列表中，尝试直接设置值");
+        sel.value = data.aircraft;
+    }
     sel.dispatchEvent(new Event('change', { bubbles: true }));
 
     // 2. 起飞机场
@@ -116,9 +132,12 @@ function fillFlight(index) {
         console.error("未找到起飞机场输入框，XPath可能已变化");
         return false;
     }
+    originInput.focus();
     originInput.value = data.origin;
     originInput.dispatchEvent(new Event('input', { bubbles: true }));
     originInput.dispatchEvent(new Event('change', { bubbles: true }));
+    originInput.dispatchEvent(new Event('blur', { bubbles: true }));
+    originInput.blur();
 
     // 3. 目的地机场
     var destInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[1]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[4]/td[1]/input[1]');
@@ -126,9 +145,12 @@ function fillFlight(index) {
         console.error("未找到目的地机场输入框，XPath可能已变化");
         return false;
     }
+    destInput.focus();
     destInput.value = data.dest;
     destInput.dispatchEvent(new Event('input', { bubbles: true }));
     destInput.dispatchEvent(new Event('change', { bubbles: true }));
+    destInput.dispatchEvent(new Event('blur', { bubbles: true }));
+    destInput.blur();
 
     console.log("✅ 填充完成，请手动点击提交按钮！");
     return true;
@@ -154,10 +176,8 @@ console.log("📌 在控制台输入 fillNext() 填充下一条，每次填完�
 console.log("📌 如需重新开始，输入 resetIndex() 重置索引");
 """
 
-        # 将 __FLIGHT_DATA__ 替换为真正的 JSON 数据
         js_script = js_template.replace("__FLIGHT_DATA__", flights_json)
 
-        # 显示脚本
         st.subheader("📜 生成的 JavaScript 脚本（复制以下全部内容）")
         st.code(js_script, language="javascript")
         st.info("💡 点击代码框右上角的复制图标，或手动全选后 Ctrl+C 复制。")
