@@ -18,12 +18,10 @@ if uploaded_file is not None:
         df = pd.read_excel(uploaded_file, sheet_name=0)
 
         # ---------- 智能列名匹配 ----------
-        # 先尝试按表头精确匹配，若失败则按位置（C=2, K=10, M=12）
         col_aircraft = None
         col_origin = None
         col_dest = None
 
-        # 常见列名映射
         aircraft_keywords = ['飞机注册号', '注册号', '机号', 'Aircraft', 'Tail']
         origin_keywords = ['出发地', '起飞机场', 'Origin', 'Departure', '机场四字码(起)']
         dest_keywords = ['到达地', '目的地机场', 'Dest', 'Arrival', '机场四字码(到)']
@@ -37,23 +35,26 @@ if uploaded_file is not None:
             elif any(kw in col_upper for kw in dest_keywords):
                 col_dest = col
 
+        # 如果没匹配到，回退到位置（C=2, K=10, M=12）
         if col_aircraft is None or col_origin is None or col_dest is None:
-            st.warning("未通过列名识别，将按位置读取：C列(飞机号)、K列(出发地)、M列(到达地)。")
-            # 位置索引（0-based）
+            st.warning(
+                f"未通过列名匹配，将按位置读取：C列(飞机号)、K列(出发地)、M列(到达地)。"
+                f"当前表头：{list(df.columns)}"
+            )
             col_aircraft = df.columns[2] if len(df.columns) > 2 else None
             col_origin = df.columns[10] if len(df.columns) > 10 else None
             col_dest = df.columns[12] if len(df.columns) > 12 else None
-            if any(v is None for v in [col_aircraft, col_origin, col_dest]):
-                st.error("Excel 列数不足，请检查文件格式（至少需要 C、K、M 列）。")
-                st.stop()
 
-        # ---------- 提取数据 ----------
+        if any(v is None for v in [col_aircraft, col_origin, col_dest]):
+            st.error("Excel 列数不足，至少需要包含 C(飞机号)、K(出发地)、M(到达地) 三列。")
+            st.stop()
+
+        # 提取数据
         flights = []
         for idx, row in df.iterrows():
             aircraft = row[col_aircraft]
             origin = row[col_origin]
             dest = row[col_dest]
-            # 跳过空值/无效值
             if pd.notna(aircraft) and pd.notna(origin) and pd.notna(dest):
                 flights.append({
                     "aircraft": str(aircraft).strip(),
@@ -67,16 +68,15 @@ if uploaded_file is not None:
 
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
-        # 预览
         with st.expander("📋 预览解析数据（前5条）"):
             preview_df = pd.DataFrame(flights).head(5)
             st.dataframe(preview_df, use_container_width=True)
 
-        # ---------- 生成 JavaScript 脚本 ----------
+        # ---------- 生成 JavaScript 脚本（使用占位符避免 Python {} 冲突） ----------
         flights_json = json.dumps(flights, ensure_ascii=False, indent=2)
-        total = len(flights)
 
-        js_script = f"""
+        # 这里使用普通字符串模板，用 __FLIGHT_DATA__ 占位，再通过 replace 注入
+        js_template = """
 // ============================================================
 //  Arinc 飞行计划自动填表脚本（逐条模式）
 //  使用方法：
@@ -86,73 +86,76 @@ if uploaded_file is not None:
 //  4. 填完后请手动点击提交按钮
 // ============================================================
 
-var flightData = {flights_json};
+var flightData = __FLIGHT_DATA__;
 var currentIndex = 0;
 
-function getElementByXpath(path) {{
+function getElementByXpath(path) {
     return document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-}}
+}
 
-function fillFlight(index) {{
-    if (index < 0 || index >= flightData.length) {{
+function fillFlight(index) {
+    if (index < 0 || index >= flightData.length) {
         console.error("索引超出范围 (0 ~ " + (flightData.length - 1) + ")");
         return false;
-    }}
+    }
     var data = flightData[index];
-    console.log(`🛫 填充第 ${{index+1}}/{flightData.length} 条: ${{data.aircraft}}  ${{data.origin}} -> ${{data.dest}}`);
+    console.log(`🛫 填充第 ${index+1}/${flightData.length} 条: ${data.aircraft}  ${data.origin} -> ${data.dest}`);
 
-    // 飞机下拉框
+    // 1. 飞机下拉框
     var sel = document.getElementById('Aircraft');
-    if (!sel) {{
+    if (!sel) {
         console.error("未找到 id='Aircraft' 的下拉框");
         return false;
-    }}
+    }
     sel.value = data.aircraft;
-    sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // 起飞机场
+    // 2. 起飞机场
     var originInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[1]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[1]/td[1]/input[1]');
-    if (!originInput) {{
+    if (!originInput) {
         console.error("未找到起飞机场输入框，XPath可能已变化");
         return false;
-    }}
+    }
     originInput.value = data.origin;
-    originInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-    originInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    originInput.dispatchEvent(new Event('input', { bubbles: true }));
+    originInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // 目的地机场
+    // 3. 目的地机场
     var destInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[1]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[4]/td[1]/input[1]');
-    if (!destInput) {{
+    if (!destInput) {
         console.error("未找到目的地机场输入框，XPath可能已变化");
         return false;
-    }}
+    }
     destInput.value = data.dest;
-    destInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-    destInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    destInput.dispatchEvent(new Event('input', { bubbles: true }));
+    destInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-    console.log("✅ 填充完成，请手动提交！");
+    console.log("✅ 填充完成，请手动点击提交按钮！");
     return true;
-}}
+}
 
-function fillNext() {{
-    if (currentIndex >= flightData.length) {{
+function fillNext() {
+    if (currentIndex >= flightData.length) {
         console.log("🎉 所有航段已全部填充完毕！");
         return;
-    }}
-    if (fillFlight(currentIndex)) {{
+    }
+    if (fillFlight(currentIndex)) {
         currentIndex++;
-    }}
-}}
+    }
+}
 
-function resetIndex() {{
+function resetIndex() {
     currentIndex = 0;
-    console.log("🔄 索引已重置");
-}}
+    console.log("🔄 索引已重置为 0");
+}
 
 console.log("✅ 脚本加载成功，共 " + flightData.length + " 条航段");
-console.log("📌 输入 fillNext() 填充下一条，每次手动提交");
-console.log("📌 输入 resetIndex() 重置索引");
+console.log("📌 在控制台输入 fillNext() 填充下一条，每次填完请手动提交");
+console.log("📌 如需重新开始，输入 resetIndex() 重置索引");
 """
+
+        # 将 __FLIGHT_DATA__ 替换为真正的 JSON 数据
+        js_script = js_template.replace("__FLIGHT_DATA__", flights_json)
 
         # 显示脚本
         st.subheader("📜 生成的 JavaScript 脚本（复制以下全部内容）")
@@ -162,13 +165,13 @@ console.log("📌 输入 resetIndex() 重置索引");
         with st.expander("📖 详细使用步骤"):
             st.markdown("""
             1. 登录 Arinc 并进入飞行计划制作页面。
-            2. 按 **F12** → 点击 **Console** 标签。
+            2. 按 **F12** → 点击 **Console（控制台）** 标签。
             3. 将生成的 JS 脚本 **全选复制**，粘贴到控制台后按 **回车** 执行。
             4. 看到 `✅ 脚本加载成功` 后，在控制台输入 **`fillNext()`** 并回车。
-            5. 脚本自动填充 **飞机号、起飞机场、目的地机场**。
+            5. 脚本会自动填入 **飞机号、起飞机场、目的地机场**。
             6. **你手动点击页面上的“提交”按钮**。
             7. 回到控制台，再次输入 **`fillNext()`** 继续下一条。
-            8. 循环直至全部完成。
+            8. 重复步骤 6-7，直至所有航段制作完毕。
             """)
 
     except Exception as e:
