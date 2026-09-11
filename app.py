@@ -7,11 +7,6 @@ st.set_page_config(page_title="Arinc 飞行计划辅助脚本生成器", layout=
 st.title("✈️ Arinc 飞行计划辅助脚本生成器")
 st.caption("上传 Excel 航段表 → 生成 PRELIM·PACKAGE 文本 / JS 脚本")
 
-st.info(
-    "⚠️ **合规说明**：本工具生成的脚本仅用于**辅助填写**表单字段（飞机号、起飞机场、目的地机场），"
-    "**不会自动点击提交**。每次填充后需您手动点击提交按钮，完全符合“浏览器辅助”安全规范。"
-)
-
 uploaded_file = st.file_uploader("📂 上传航班计划 Excel 文件", type=["xlsx"])
 
 if uploaded_file is not None:
@@ -41,7 +36,7 @@ if uploaded_file is not None:
                 col_date = col
 
         if col_aircraft is None or col_origin is None or col_dest is None:
-            st.warning(f"未通过列名匹配，将按位置读取：C列(飞机号)、K列(出发地)、M列(到达地)、G列(出发日期)。\n当前表头：{list(df.columns)}")
+            # 静默兜底：按位置读取
             col_aircraft = df.columns[2] if len(df.columns) > 2 else None
             col_origin = df.columns[10] if len(df.columns) > 10 else None
             col_dest = df.columns[12] if len(df.columns) > 12 else None
@@ -104,12 +99,8 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  功能二（先显示）：PRELIM / PACKAGE 文本（按飞机号分组，自定义顺序）
+        #  PRELIM / PACKAGE 文本（按飞机号分组，自定义顺序）
         # ============================================================
-        st.header("📝 PRELIM / PACKAGE 文本")
-        st.caption("纯文本，手动复制粘贴到 ARINCDirect。按飞机号分组，先列全部 PRELIM，再列全部 PACKAGE。")
-
-        # 按飞机号分组（保持出现顺序）
         grouped = {}
         order = []
         for f in flights:
@@ -150,11 +141,9 @@ if uploaded_file is not None:
                 st.code(block, language="text")
 
         # ============================================================
-        #  功能一（后显示）：JavaScript 脚本
+        #  JavaScript 脚本
         # ============================================================
         st.divider()
-        st.header("🧩 JavaScript 填表脚本")
-        st.caption("在 Arinc 页面控制台粘贴执行，逐条填充。请自行评估合规风险。")
 
         flights_json = json.dumps(flights, ensure_ascii=False, indent=2)
 
