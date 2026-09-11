@@ -104,42 +104,34 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  功能二（先显示）：PRELIM / PACKAGE 文本
+        #  功能二（先显示）：PRELIM / PACKAGE 文本（按飞机号分组）
         # ============================================================
         st.header("📝 PRELIM / PACKAGE 文本")
-        st.caption("纯文本，手动复制粘贴到 ARINCDirect。PRELIM 与 PACKAGE 分开显示，可分别点右上角图标复制。")
+        st.caption("纯文本，手动复制粘贴到 ARINCDirect。按飞机号分组，先列全部 PRELIM，再列全部 PACKAGE。")
 
-        text_results = []
+        # 按飞机号分组（保持出现顺序）
+        grouped = {}
+        order = []
         for f in flights:
             if not f["date"]:
                 continue
-            prelim = f"PRELIM {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}"
-            package = f"PACKAGE {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}"
-            text_results.append({
-                "飞机注册号": f["aircraft"],
-                "航段": f"{f['origin']}-{f['dest']}",
-                "日期": f["date"],
-                "PRELIM": prelim,
-                "PACKAGE": package,
-            })
+            ac = f["aircraft"]
+            if ac not in grouped:
+                grouped[ac] = []
+                order.append(ac)
+            grouped[ac].append(f)
 
-        if not text_results:
+        if not order:
             st.warning("⚠️ 未能生成 PRELIM/PACKAGE 文本，可能是日期列无法解析。")
         else:
-            # 逐条显示，PRELIM / PACKAGE 左右分列
-            for i, r in enumerate(text_results):
-                st.markdown(f"**{i+1}. {r['飞机注册号']}　·　{r['航段']}　·　{r['日期']}**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.code(r['PRELIM'], language="text")
-                with col2:
-                    st.code(r['PACKAGE'], language="text")
+            for ac in order:
+                items = grouped[ac]
+                prelims = [f"PRELIM {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
+                packages = [f"PACKAGE {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
+                block = "\n".join(prelims + packages)
 
-            st.markdown("### 📦 全部 PRELIM")
-            st.code("\n".join(r['PRELIM'] for r in text_results), language="text")
-
-            st.markdown("### 📦 全部 PACKAGE")
-            st.code("\n".join(r['PACKAGE'] for r in text_results), language="text")
+                st.markdown(f"### {ac}")
+                st.code(block, language="text")
 
         # ============================================================
         #  功能一（后显示）：JavaScript 脚本
