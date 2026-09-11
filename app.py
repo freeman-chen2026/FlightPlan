@@ -104,7 +104,7 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  功能二（先显示）：PRELIM / PACKAGE 文本（按飞机号分组）
+        #  功能二（先显示）：PRELIM / PACKAGE 文本（按飞机号分组，自定义顺序）
         # ============================================================
         st.header("📝 PRELIM / PACKAGE 文本")
         st.caption("纯文本，手动复制粘贴到 ARINCDirect。按飞机号分组，先列全部 PRELIM，再列全部 PACKAGE。")
@@ -120,6 +120,22 @@ if uploaded_file is not None:
                 grouped[ac] = []
                 order.append(ac)
             grouped[ac].append(f)
+
+        # 自定义机号顺序
+        preferred_order = [
+            "B652Q", "B652S", "B65AP", "MLLIN", "N88AY",
+            "B3926", "B652R", "B8105", "B8160", "B8262",
+            "B8292", "B8309", "N2QE", "N328LM", "N550DR",
+            "N577QT", "N7777U", "N777ZH", "T7178HT", "T7CJK",
+            "VPCSZ", "VPCVA"
+        ]
+
+        # 按自定义顺序排序，不在列表中的追加到末尾
+        sorted_order = [ac for ac in preferred_order if ac in grouped]
+        for ac in order:
+            if ac not in sorted_order:
+                sorted_order.append(ac)
+        order = sorted_order
 
         if not order:
             st.warning("⚠️ 未能生成 PRELIM/PACKAGE 文本，可能是日期列无法解析。")
