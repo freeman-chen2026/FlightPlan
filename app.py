@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, time as dtime
 
 st.set_page_config(page_title="Arinc 飞行计划辅助脚本生成器", layout="centered")
 st.title("✈️ Arinc 飞行计划辅助脚本生成器")
@@ -18,11 +18,13 @@ if uploaded_file is not None:
         col_origin = None
         col_dest = None
         col_date = None
+        col_time = None  # 新增：计划出发时间
 
         aircraft_keywords = ['飞机注册号', '注册号', '机号', 'Aircraft', 'Tail']
         origin_keywords = ['出发地', '起飞机场', 'Origin', 'Departure', '机场四字码(起)']
         dest_keywords = ['到达地', '目的地机场', 'Dest', 'Arrival', '机场四字码(到)']
         date_keywords = ['出发日期', '起飞日期', 'Departure Date', 'Date']
+        time_keywords = ['计划出发', '起飞时间', '出发时间', 'Departure Time', 'ETD']
 
         for col in df.columns:
             col_upper = str(col).strip()
@@ -34,25 +36,31 @@ if uploaded_file is not None:
                 col_dest = col
             elif any(kw in col_upper for kw in date_keywords):
                 col_date = col
+            elif any(kw in col_upper for kw in time_keywords):
+                col_time = col
 
-        if col_aircraft is None or col_origin is None or col_dest is None:
-            # 静默兜底：按位置读取
+        # 静默兜底：按位置读取
+        if col_aircraft is None:
             col_aircraft = df.columns[2] if len(df.columns) > 2 else None
+        if col_origin is None:
             col_origin = df.columns[10] if len(df.columns) > 10 else None
+        if col_dest is None:
             col_dest = df.columns[12] if len(df.columns) > 12 else None
-
         if col_date is None:
             col_date = df.columns[6] if len(df.columns) > 6 else None
+        if col_time is None:
+            col_time = df.columns[7] if len(df.columns) > 7 else None
 
         if any(v is None for v in [col_aircraft, col_origin, col_dest]):
             st.error("Excel 列数不足，至少需要包含 C(飞机号)、K(出发地)、M(到达地) 三列。")
             st.stop()
 
-        # ---------- 日期格式化工具 ----------
+        # ---------- 日期/时间解析与 UTC 转换 ----------
         MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                   'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
 
-        def format_date(d):
+        def parse_date(d):
+            """解析日期，返回 datetime 对象（时间 00:00:00）"""
             if d is None or pd.isna(d):
                 return None
             if isinstance(d, str):
@@ -60,13 +68,44 @@ if uploaded_file is not None:
                 for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%d/%m/%Y', '%m/%d/%Y',
                             '%Y-%m-%d %H:%M:%S'):
                     try:
-                        d = datetime.strptime(d, fmt)
-                        break
+                        return datetime.strptime(d, fmt)
                     except ValueError:
                         continue
-            if hasattr(d, 'day') and hasattr(d, 'month'):
-                return f"{d.day:02d}{MONTHS[d.month - 1]}"
+                return None
+            if hasattr(d, 'year') and hasattr(d, 'month') and hasattr(d, 'day'):
+                return datetime(d.year, d.month, d.day)
             return None
+
+        def parse_time(t):
+            """解析时间，返回 time 对象"""
+            if t is None or pd.isna(t):
+                return None
+            if isinstance(t, str):
+                t = t.strip()
+                for fmt in ('%H:%M', '%H:%M:%S', '%H%M'):
+                    try:
+                        return datetime.strptime(t, fmt).time()
+                    except ValueError:
+                        continue
+                return None
+            if hasattr(t, 'hour') and hasattr(t, 'minute'):
+                return dtime(t.hour, t.minute, getattr(t, 'second', 0))
+            return None
+
+        def get_utc_date_str(date_val, time_val):
+            """北京时间 → UTC，返回 DDMMM 格式字符串"""
+            dt_date = parse_date(date_val)
+            if dt_date is None:
+                return None
+            tm = parse_time(time_val)
+            if tm is not None:
+                dt_bj = datetime(dt_date.year, dt_date.month, dt_date.day,
+                                 tm.hour, tm.minute, tm.second)
+            else:
+                dt_bj = dt_date  # 默认 00:00
+            # 北京时间 (UTC+8) 转 UTC：减 8 小时
+            dt_utc = dt_bj - timedelta(hours=8)
+            return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
 
         # ---------- 提取并清洗数据 ----------
         flights = []
@@ -75,12 +114,13 @@ if uploaded_file is not None:
             origin = row[col_origin]
             dest = row[col_dest]
             date_val = row[col_date] if col_date is not None else None
+            time_val = row[col_time] if col_time is not None else None
 
             if pd.notna(aircraft) and pd.notna(origin) and pd.notna(dest):
                 aircraft_str = str(aircraft).strip()
                 origin_str = str(origin).strip().upper()
                 dest_str = str(dest).strip().upper()
-                date_str = format_date(date_val)
+                date_str = get_utc_date_str(date_val, time_val)
 
                 if (len(origin_str) == 4 and origin_str.isalpha() and
                     len(dest_str) == 4 and dest_str.isalpha() and
