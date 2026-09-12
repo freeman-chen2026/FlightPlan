@@ -131,7 +131,7 @@ if uploaded_file is not None:
             dt_utc = dt_bj - timedelta(hours=8)
             return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
 
-        # ---------- flights ----------
+        # ---------- flights（PRELIM/PACKAGE + JS 用） ----------
         flights = []
         for idx, row in df.iterrows():
             aircraft = row[col_aircraft]
@@ -163,18 +163,33 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单（富文本一键复制，保留居中 / 14号 / Times New Roman / 边框）
+        #  检查单（富文本一键复制，带排序 / 分组空行）
         # ============================================================
         st.divider()
         st.subheader("📋 检查单")
 
-        checklist_items = []
+        # 机号优先级（按你给定的顺序）
+        preferred_order = [
+            "B3926", "B8105", "B8160", "B8262", "B8292", "B8309",
+            "N2QE", "N328LM", "N550DR", "N577QT", "N7777U", "N777ZH",
+            "T7178HT", "T7CJK", "VPCSZ", "VPCVA",
+            "B652R", "N88AY", "MLLIN", "B652Q", "B652S", "B65AP"
+        ]
+        priority_map = {ac: i for i, ac in enumerate(preferred_order)}
+        default_priority = len(preferred_order)
+
+        # 收集带元数据的检查单条目
+        raw_items = []
         for idx, row in df.iterrows():
             try:
                 aircraft = row[col_aircraft]
                 if pd.isna(aircraft):
                     continue
                 ac_str = str(aircraft).strip()
+                # 过滤 N/A、NONE 等无效值
+                if ac_str.upper() in ('N/A', 'NA', 'NONE', 'NULL', ''):
+                    continue
+                # 过滤含中文的表头行
                 if any('\u4e00' <= ch <= '\u9fff' for ch in ac_str):
                     continue
 
@@ -213,14 +228,39 @@ if uploaded_file is not None:
                 else:
                     content = f"{line1}\n{line2}"
 
-                checklist_items.append(content)
+                raw_items.append({
+                    "aircraft": ac_str,
+                    "dep_dt": dep_dt,
+                    "dep_time_str": dep_time_str,
+                    "content": content,
+                })
             except Exception:
                 continue
 
-        if not checklist_items:
+        # 排序：日期 → 机号优先级 → 出发时间
+        raw_items.sort(key=lambda x: (
+            x["dep_dt"] if x["dep_dt"] else datetime(2100, 1, 1),
+            priority_map.get(x["aircraft"], default_priority),
+            x["dep_time_str"] or "99:99"
+        ))
+
+        # 构建行：同一天内不同机号之间插入空行
+        rows = []
+        prev_date = None
+        prev_ac = None
+        for it in raw_items:
+            cur_date = it["dep_dt"].date() if it["dep_dt"] else None
+            cur_ac = it["aircraft"]
+            if prev_date is not None and cur_date == prev_date and cur_ac != prev_ac:
+                rows.append({"type": "blank"})
+            rows.append({"type": "data", "content": it["content"]})
+            prev_date = cur_date
+            prev_ac = cur_ac
+
+        if not rows:
             st.warning("⚠️ 未能生成检查单。")
         else:
-            items_json = json.dumps(checklist_items, ensure_ascii=False)
+            rows_json = json.dumps(rows, ensure_ascii=False)
 
             components.html(
                 f"""
@@ -240,7 +280,6 @@ if uploaded_file is not None:
                   table.preview {{
                     margin-top: 16px; border-collapse: collapse; width: 100%;
                   }}
-                  /* 预览样式与要粘贴的样式保持一致 */
                   table.preview td {{
                     padding: 6px 10px;
                     text-align: center;
@@ -259,7 +298,7 @@ if uploaded_file is not None:
                 <table class="preview" id="preview"></table>
 
                 <script>
-                  const items = {items_json};
+                  const rows = {rows_json};
 
                   function escapeHtml(s) {{
                     return s.replace(/&/g, '&amp;')
@@ -267,32 +306,31 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 每一格统一的内联样式：居中 / 14号 / Times New Roman / 1px 实线边框
+                  // 每一格统一的内联样式
                   const TD_STYLE = "text-align: center; vertical-align: middle; " +
                                    "font-family: 'Times New Roman', Times, serif; " +
                                    "font-size: 14pt; " +
                                    "border: 1px solid #000000; " +
                                    "padding: 4px 8px;";
 
-                  // 预览：用表格渲染，和粘贴效果一致
+                  function renderRow(row) {{
+                    if (row.type === 'blank') {{
+                      return '<tr><td style="' + TD_STYLE + '">&nbsp;</td></tr>';
+                    }}
+                    return '<tr><td style="' + TD_STYLE + '">' +
+                           escapeHtml(row.content).split('\\n').join('<br>') +
+                           '</td></tr>';
+                  }}
+
                   const previewEl = document.getElementById('preview');
-                  previewEl.innerHTML = items.map(t =>
-                    '<tr><td style="' + TD_STYLE + '">' +
-                    escapeHtml(t).split('\\n').join('<br>') +
-                    '</td></tr>'
-                  ).join('');
+                  previewEl.innerHTML = rows.map(renderRow).join('');
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
-                    // 关键：<table style="border-collapse:collapse"> + 每格内联样式
                     const html =
                       '<table style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">' +
-                      items.map(t =>
-                        '<tr><td style="' + TD_STYLE + '">' +
-                        escapeHtml(t).split('\\n').join('<br>') +
-                        '</td></tr>'
-                      ).join('') +
+                      rows.map(renderRow).join('') +
                       '</table>';
-                    const plain = items.join('\\n\\n');
+                    const plain = rows.map(r => r.type === 'blank' ? '' : r.content).join('\\n\\n');
 
                     try {{
                       await navigator.clipboard.write([
@@ -318,7 +356,7 @@ if uploaded_file is not None:
 
             st.caption(
                 "使用方法：点上面的「📋 一键复制全部检查单」 → 到腾讯文档里**单击**第一个目标单元格 → Ctrl+V。"
-                "每个计划会自动落一格，并保留居中、14 号 Times New Roman、1px 实线边框。"
+                "排序：按日期升序，同一天内按机号优先级，同机号内按出发时间；同一天内不同机号之间自动空一行。"
             )
 
         # ============================================================
@@ -336,14 +374,6 @@ if uploaded_file is not None:
                 grouped[ac] = []
                 order.append(ac)
             grouped[ac].append(f)
-
-        preferred_order = [
-            "B652Q", "B652S", "B65AP", "MLLIN", "N88AY",
-            "B3926", "B652R", "B8105", "B8160", "B8262",
-            "B8292", "B8309", "N2QE", "N328LM", "N550DR",
-            "N577QT", "N7777U", "N777ZH", "T7178HT", "T7CJK",
-            "VPCSZ", "VPCVA"
-        ]
 
         sorted_order = [ac for ac in preferred_order if ac in grouped]
         for ac in order:
