@@ -63,7 +63,6 @@ if uploaded_file is not None:
             elif any(kw in col_str for kw in arr_time_keywords) and col_arr_time is None:
                 col_arr_time = col
 
-        # 按位置兜底
         def get_col(idx):
             return df.columns[idx] if len(df.columns) > idx else None
 
@@ -80,7 +79,7 @@ if uploaded_file is not None:
         if col_arr_time is None: col_arr_time = get_col(15)
 
         if any(v is None for v in [col_aircraft, col_origin, col_dest]):
-            st.error("Excel 列数不足，至少需要包含 C(飞机号)、K(出发地)、M(到达地) 三列。")
+            st.error("Excel 列数不足。")
             st.stop()
 
         # ---------- 日期/时间解析 ----------
@@ -119,7 +118,6 @@ if uploaded_file is not None:
             return None
 
         def get_utc_date_str(date_val, time_val):
-            """北京时间 → UTC 日期字符串 DDMMM"""
             dt_date = parse_date_to_dt(date_val)
             if dt_date is None:
                 return None
@@ -132,7 +130,7 @@ if uploaded_file is not None:
             dt_utc = dt_bj - timedelta(hours=8)
             return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
 
-        # ---------- 提取航段（PRELIM/PACKAGE + JS 用） ----------
+        # ---------- flights（PRELIM/PACKAGE + JS 用） ----------
         flights = []
         for idx, row in df.iterrows():
             aircraft = row[col_aircraft]
@@ -164,19 +162,22 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  新增：检查单文本
+        #  检查单文本（一键复制全部）
         # ============================================================
         st.divider()
-        st.subheader("📋 检查单文本（可粘贴到腾讯文档）")
+        st.subheader("📋 检查单文本（一键复制全部）")
+        st.info(
+            "💡 **粘贴方法**：复制全部后，在腾讯文档里选中第一个目标单元格，"
+            "**双击进入编辑模式**再 Ctrl+V，或直接按行粘贴后手动整理。"
+        )
 
-        checklist_items = []
+        checklist_lines = []
         for idx, row in df.iterrows():
             try:
                 aircraft = row[col_aircraft]
                 if pd.isna(aircraft):
                     continue
                 ac_str = str(aircraft).strip()
-                # 跳过表头 / 含中文
                 if any('\u4e00' <= ch <= '\u9fff' for ch in ac_str):
                     continue
 
@@ -195,12 +196,10 @@ if uploaded_file is not None:
                 dep_city = row[col_dep_city] if col_dep_city is not None else None
                 arr_city = row[col_arr_city] if col_arr_city is not None else None
                 purpose = row[col_purpose] if col_purpose is not None else None
-                flight_no = row[col_flight_no] if col_flight_no is not None else None
 
                 dep_city_str = str(dep_city).strip() if pd.notna(dep_city) else ""
                 arr_city_str = str(arr_city).strip() if pd.notna(arr_city) else ""
                 purpose_str = str(purpose).strip() if pd.notna(purpose) else ""
-                flight_no_str = str(flight_no).strip() if pd.notna(flight_no) else ""
 
                 dep_dt = parse_date_to_dt(dep_date)
                 arr_dt = parse_date_to_dt(arr_date)
@@ -212,33 +211,19 @@ if uploaded_file is not None:
                 line1 = f"{ac_str} {dep_time_str} - {arr_time_str}{plus}"
                 line2 = f"{dep_city_str} - {arr_city_str}"
 
-                # 调机加 F 前缀
                 if "调机" in purpose_str:
                     content = f"F\n{line1}\n{line2}"
                 else:
                     content = f"{line1}\n{line2}"
 
-                checklist_items.append({
-                    "aircraft": ac_str,
-                    "content": content,
-                    "flight_no": flight_no_str,
-                })
+                checklist_lines.append(content)
             except Exception:
                 continue
 
-        if not checklist_items:
+        if not checklist_lines:
             st.warning("⚠️ 未能生成检查单文本。")
         else:
-            st.caption(f"共 {len(checklist_items)} 条，每条可单独复制；底部可一次性复制全部。")
-
-            # 逐条显示
-            for i, item in enumerate(checklist_items):
-                st.markdown(f"**{i+1}. {item['aircraft']}**")
-                st.code(item["content"], language="text")
-
-            # 批量复制
-            st.markdown("#### 📦 批量复制（全部计划）")
-            all_checklist = "\n\n".join(item["content"] for item in checklist_items)
+            all_checklist = "\n\n".join(checklist_lines)
             st.code(all_checklist, language="text")
 
         # ============================================================
@@ -289,15 +274,6 @@ if uploaded_file is not None:
         flights_json = json.dumps(flights, ensure_ascii=False, indent=2)
 
         js_template = """
-// ============================================================
-//  Arinc 飞行计划自动填表脚本（逐条模式）
-//  使用方法：
-//  1. 在 Arinc 页面按 F12 打开控制台
-//  2. 粘贴以下全部代码并回车执行
-//  3. 每次在控制台输入 fillNext() 并回车，自动填入下一条
-//  4. 填完后请手动点击提交按钮
-// ============================================================
-
 var flightData = __FLIGHT_DATA__;
 var currentIndex = 0;
 
@@ -311,32 +287,19 @@ function fillFlight(index) {
         return false;
     }
     var data = flightData[index];
-    console.log(`🛫 填充第 ${index+1}/${flightData.length} 条: ${data.aircraft}  ${data.origin} -> ${data.dest}`);
+    console.log("🛫 填充第 " + (index+1) + "/" + flightData.length + " 条: " + data.aircraft + "  " + data.origin + " -> " + data.dest);
 
     var sel = document.getElementById('Aircraft');
-    if (!sel) {
-        console.error("未找到 id='Aircraft' 的下拉框");
-        return false;
-    }
+    if (!sel) { console.error("未找到 id='Aircraft'"); return false; }
     var found = false;
     for (var opt of sel.options) {
-        if (opt.value === data.aircraft) {
-            opt.selected = true;
-            found = true;
-            break;
-        }
+        if (opt.value === data.aircraft) { opt.selected = true; found = true; break; }
     }
-    if (!found) {
-        console.warn("飞机号 " + data.aircraft + " 不在下拉列表中，尝试直接设置值");
-        sel.value = data.aircraft;
-    }
+    if (!found) { sel.value = data.aircraft; }
     sel.dispatchEvent(new Event('change', { bubbles: true }));
 
     var originInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[1]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[1]/td[1]/input[1]');
-    if (!originInput) {
-        console.error("未找到起飞机场输入框，XPath可能已变化");
-        return false;
-    }
+    if (!originInput) { console.error("未找到起飞机场输入框"); return false; }
     originInput.focus();
     originInput.value = data.origin;
     originInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -345,10 +308,7 @@ function fillFlight(index) {
     originInput.blur();
 
     var destInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[1]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[4]/td[1]/input[1]');
-    if (!destInput) {
-        console.error("未找到目的地机场输入框，XPath可能已变化");
-        return false;
-    }
+    if (!destInput) { console.error("未找到目的地机场输入框"); return false; }
     destInput.focus();
     destInput.value = data.dest;
     destInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -361,42 +321,20 @@ function fillFlight(index) {
 }
 
 function fillNext() {
-    if (currentIndex >= flightData.length) {
-        console.log("🎉 所有航段已全部填充完毕！");
-        return;
-    }
-    if (fillFlight(currentIndex)) {
-        currentIndex++;
-    }
+    if (currentIndex >= flightData.length) { console.log("🎉 全部填充完毕！"); return; }
+    if (fillFlight(currentIndex)) { currentIndex++; }
 }
 
-function resetIndex() {
-    currentIndex = 0;
-    console.log("🔄 索引已重置为 0");
-}
+function resetIndex() { currentIndex = 0; console.log("🔄 索引已重置为 0"); }
 
 console.log("✅ 脚本加载成功，共 " + flightData.length + " 条航段");
-console.log("📌 在控制台输入 fillNext() 填充下一条，每次填完请手动提交");
-console.log("📌 如需重新开始，输入 resetIndex() 重置索引");
+console.log("📌 输入 fillNext() 填充下一条");
 """
 
         js_script = js_template.replace("__FLIGHT_DATA__", flights_json)
 
-        st.subheader("📜 生成的 JavaScript 脚本（复制以下全部内容）")
+        st.subheader("📜 JavaScript 脚本")
         st.code(js_script, language="javascript")
-        st.info("💡 点击代码框右上角的复制图标，或手动全选后 Ctrl+C 复制。")
-
-        with st.expander("📖 详细使用步骤"):
-            st.markdown("""
-            1. 登录 Arinc 并进入飞行计划制作页面。
-            2. 按 **F12** → 点击 **Console（控制台）** 标签。
-            3. 将生成的 JS 脚本 **全选复制**，粘贴到控制台后按 **回车** 执行。
-            4. 看到 `✅ 脚本加载成功` 后，在控制台输入 **`fillNext()`** 并回车。
-            5. 脚本会自动填入 **飞机号、起飞机场、目的地机场**。
-            6. **你手动点击页面上的“提交”按钮**。
-            7. 回到控制台，再次输入 **`fillNext()`** 继续下一条。
-            8. 重复步骤 6-7，直至所有航段制作完毕。
-            """)
 
     except Exception as e:
         st.error(f"❌ 处理文件时发生错误：{e}")
