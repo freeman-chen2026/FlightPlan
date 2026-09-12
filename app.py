@@ -163,7 +163,7 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单（富文本一键复制）
+        #  检查单（富文本一键复制，一个计划一个单元格）
         # ============================================================
         st.divider()
         st.subheader("📋 检查单")
@@ -222,7 +222,6 @@ if uploaded_file is not None:
         else:
             items_json = json.dumps(checklist_items, ensure_ascii=False)
 
-            # 用 components.html 嵌入复制按钮 + 富文本剪贴板逻辑
             components.html(
                 f"""
                 <!DOCTYPE html>
@@ -238,23 +237,21 @@ if uploaded_file is not None:
                   .btn:hover {{ background: #e63939; }}
                   .btn:active {{ transform: translateY(1px); }}
                   .status {{ margin-left: 12px; color: #555; font-size: 14px; }}
-                  .preview {{
-                    margin-top: 16px; padding: 12px 16px;
-                    background: #f6f6f6; border: 1px solid #e0e0e0;
-                    border-radius: 6px; font-family: Consolas, monospace;
-                    font-size: 13px; line-height: 1.7; color: #222;
+                  table.preview {{
+                    margin-top: 16px; border-collapse: collapse; width: 100%;
+                    font-family: Consolas, monospace; font-size: 13px;
                   }}
-                  .preview > div {{
-                    padding: 6px 0;
-                    border-bottom: 1px dashed #e0e0e0;
+                  table.preview td {{
+                    padding: 8px 12px; border: 1px solid #e0e0e0;
+                    vertical-align: top; background: #fafafa;
+                    white-space: pre-wrap; line-height: 1.6;
                   }}
-                  .preview > div:last-child {{ border-bottom: none; }}
                 </style>
                 </head>
                 <body>
                 <button class="btn" id="copyBtn">📋 一键复制全部检查单</button>
                 <span class="status" id="status"></span>
-                <div class="preview" id="preview"></div>
+                <table class="preview" id="preview"></table>
 
                 <script>
                   const items = {items_json};
@@ -265,15 +262,17 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
+                  // 预览：每个计划渲染成一个单元格
                   const previewEl = document.getElementById('preview');
                   previewEl.innerHTML = items.map(t =>
-                    '<div>' + escapeHtml(t).split('\\n').join('<br>') + '</div>'
+                    '<tr><td>' + escapeHtml(t).split('\\n').join('<br>') + '</td></tr>'
                   ).join('');
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
-                    const html = items.map(t =>
-                      '<div>' + escapeHtml(t).split('\\n').join('<br>') + '</div>'
-                    ).join('');
+                    // 关键：<table><tr><td> 结构，每个计划落一格
+                    const html = '<table>' + items.map(t =>
+                      '<tr><td>' + escapeHtml(t).split('\\n').join('<br>') + '</td></tr>'
+                    ).join('') + '</table>';
                     const plain = items.join('\\n\\n');
 
                     try {{
@@ -284,10 +283,10 @@ if uploaded_file is not None:
                         }})
                       ]);
                       document.getElementById('status').textContent =
-                        '✅ 已复制，去腾讯文档单击单元格直接粘贴';
+                        '✅ 已复制，去腾讯文档单击第一个单元格直接粘贴';
                     }} catch (e) {{
                       document.getElementById('status').textContent =
-                        '❌ 复制失败：' + e.message + '（请用最新版 Edge/Chrome）';
+                        '❌ 复制失败：' + e.message;
                     }}
                   }});
                 </script>
