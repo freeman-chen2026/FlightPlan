@@ -1,14 +1,12 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import json
-import io
 from datetime import datetime, timedelta
-from openpyxl import Workbook
-from openpyxl.styles import Alignment
 
 st.set_page_config(page_title="Arinc 飞行计划辅助脚本生成器", layout="centered")
 st.title("✈️ Arinc 飞行计划辅助脚本生成器")
-st.caption("上传 Excel 航段表 → 生成 检查单 xlsx / PRELIM·PACKAGE 文本 / JS 脚本")
+st.caption("上传 Excel 航段表 → 生成 检查单 / PRELIM·PACKAGE 文本 / JS 脚本")
 
 uploaded_file = st.file_uploader("📂 上传航班计划 Excel 文件", type=["xlsx"])
 
@@ -165,7 +163,7 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单（生成 xlsx 下载 + 预览）
+        #  检查单（富文本一键复制）
         # ============================================================
         st.divider()
         st.subheader("📋 检查单")
@@ -222,37 +220,88 @@ if uploaded_file is not None:
         if not checklist_items:
             st.warning("⚠️ 未能生成检查单。")
         else:
-            # ---- 生成 xlsx（单元格内多行） ----
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "检查单"
-            ws.column_dimensions['A'].width = 45
-            for i, content in enumerate(checklist_items, start=1):
-                cell = ws.cell(row=i, column=1, value=content)
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            items_json = json.dumps(checklist_items, ensure_ascii=False)
 
-            buf = io.BytesIO()
-            wb.save(buf)
-            buf.seek(0)
+            # 用 components.html 嵌入复制按钮 + 富文本剪贴板逻辑
+            components.html(
+                f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                <style>
+                  body {{ font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; }}
+                  .btn {{
+                    padding: 10px 22px; font-size: 16px; cursor: pointer;
+                    background: #ff4b4b; color: white; border: none;
+                    border-radius: 6px; font-weight: bold;
+                  }}
+                  .btn:hover {{ background: #e63939; }}
+                  .btn:active {{ transform: translateY(1px); }}
+                  .status {{ margin-left: 12px; color: #555; font-size: 14px; }}
+                  .preview {{
+                    margin-top: 16px; padding: 12px 16px;
+                    background: #f6f6f6; border: 1px solid #e0e0e0;
+                    border-radius: 6px; font-family: Consolas, monospace;
+                    font-size: 13px; line-height: 1.7; color: #222;
+                  }}
+                  .preview > div {{
+                    padding: 6px 0;
+                    border-bottom: 1px dashed #e0e0e0;
+                  }}
+                  .preview > div:last-child {{ border-bottom: none; }}
+                </style>
+                </head>
+                <body>
+                <button class="btn" id="copyBtn">📋 一键复制全部检查单</button>
+                <span class="status" id="status"></span>
+                <div class="preview" id="preview"></div>
 
-            st.download_button(
-                label="📥 下载检查单 Excel（单元格内多行，可直接复制粘贴到腾讯文档）",
-                data=buf.getvalue(),
-                file_name="检查单.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                <script>
+                  const items = {items_json};
+
+                  function escapeHtml(s) {{
+                    return s.replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;');
+                  }}
+
+                  const previewEl = document.getElementById('preview');
+                  previewEl.innerHTML = items.map(t =>
+                    '<div>' + escapeHtml(t).split('\\n').join('<br>') + '</div>'
+                  ).join('');
+
+                  document.getElementById('copyBtn').addEventListener('click', async () => {{
+                    const html = items.map(t =>
+                      '<div>' + escapeHtml(t).split('\\n').join('<br>') + '</div>'
+                    ).join('');
+                    const plain = items.join('\\n\\n');
+
+                    try {{
+                      await navigator.clipboard.write([
+                        new ClipboardItem({{
+                          'text/html':  new Blob([html],  {{type: 'text/html'}}),
+                          'text/plain': new Blob([plain], {{type: 'text/plain'}})
+                        }})
+                      ]);
+                      document.getElementById('status').textContent =
+                        '✅ 已复制，去腾讯文档单击单元格直接粘贴';
+                    }} catch (e) {{
+                      document.getElementById('status').textContent =
+                        '❌ 复制失败：' + e.message + '（请用最新版 Edge/Chrome）';
+                    }}
+                  }});
+                </script>
+                </body>
+                </html>
+                """,
+                height=600,
+                scrolling=True,
             )
 
             st.caption(
-                "使用方法：下载后用 Excel 打开 → 选中 A 列所有单元格 → Ctrl+C → "
-                "到腾讯文档里选中起始单元格 → Ctrl+V。单元格内的换行会完整保留。"
+                "使用方法：点上面的「📋 一键复制全部检查单」 → 到腾讯文档里**单击**第一个目标单元格 → Ctrl+V。"
+                "每个计划会自动落一格，单元格内的换行会保留。"
             )
-
-            # ---- 页面预览 ----
-            st.markdown("**预览（页面仅用于查看，复制请用上面的下载文件）**")
-            for i, content in enumerate(checklist_items, start=1):
-                st.markdown(f"**{i}.**")
-                st.code(content, language="text")
 
         # ============================================================
         #  PRELIM / PACKAGE 文本
