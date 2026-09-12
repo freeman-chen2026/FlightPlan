@@ -281,7 +281,6 @@ if uploaded_file is not None:
 
                 <script>
                   const rows = {rows_json};
-                  const TOTAL_COLS = 30;
 
                   function escapeHtml(s) {{
                     return s.replace(/&/g, '&amp;')
@@ -289,17 +288,17 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 只保留你明确要的四个属性：居中、Times New Roman、14号、实线边框
-                  // 不加 padding，避免改变单元格内边距
+                  // 只保留你需要的 4 个属性
                   const TD_STYLE = "text-align: center; " +
                                    "vertical-align: middle; " +
                                    "font-family: 'Times New Roman', Times, serif; " +
                                    "font-size: 14pt; " +
                                    "border: 1px solid #000000;";
 
+                  // 关键：1 列宽的表格，腾讯文档只会覆盖 A 列
                   function renderRow(row) {{
                     if (row.type === 'blank') {{
-                      return '<tr><td colspan="' + TOTAL_COLS + '" style="' + TD_STYLE + '">&nbsp;</td></tr>';
+                      return '<tr><td style="' + TD_STYLE + '">&nbsp;</td></tr>';
                     }}
                     return '<tr><td style="' + TD_STYLE + '">' +
                            escapeHtml(row.content).split('\\n').join('<br>') +
@@ -308,7 +307,7 @@ if uploaded_file is not None:
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
                     const html =
-                      '<table style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">' +
+                      '<table style="border-collapse: collapse;">' +
                       rows.map(renderRow).join('') +
                       '</table>';
                     const plain = rows.map(r => r.type === 'blank' ? '' : r.content).join('\\n\\n');
