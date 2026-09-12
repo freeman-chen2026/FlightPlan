@@ -166,7 +166,6 @@ if uploaded_file is not None:
         #  检查单
         # ============================================================
         st.divider()
-        st.subheader("📋 检查单")
 
         preferred_order = [
             "B3926", "B8105", "B8160", "B8262", "B8292", "B8309",
@@ -288,14 +287,12 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 只保留 A 列需要的样式，不带 background，避免覆盖任何填充色
                   const TD_STYLE = "text-align: center; " +
                                    "vertical-align: middle; " +
                                    "font-family: 'Times New Roman', Times, serif; " +
                                    "font-size: 14pt; " +
                                    "border: 1px solid #000000;";
 
-                  // 表格固定 1 列宽：只覆盖 A 列，B–N 列不动
                   function renderRow(row) {{
                     if (row.type === 'blank') {{
                       return '<tr><td style="' + TD_STYLE + '">&nbsp;</td></tr>';
@@ -330,11 +327,6 @@ if uploaded_file is not None:
                 </html>
                 """,
                 height=80,
-            )
-
-            st.caption(
-                "粘贴后：A 列已填入内容，B–N 列的下拉、G 列橙色填充等格式完全不变。"
-                "分隔用的空行需要你手动选中该行 → 点「合并单元格」。"
             )
 
         # ============================================================
