@@ -130,7 +130,7 @@ if uploaded_file is not None:
             dt_utc = dt_bj - timedelta(hours=8)
             return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
 
-        # ---------- flights（PRELIM/PACKAGE + JS 用） ----------
+        # ---------- flights ----------
         flights = []
         for idx, row in df.iterrows():
             aircraft = row[col_aircraft]
@@ -162,13 +162,13 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单文本（一键复制全部）
+        #  检查单文本（单行格式，一键复制全部）
         # ============================================================
         st.divider()
         st.subheader("📋 检查单文本（一键复制全部）")
         st.info(
-            "💡 **粘贴方法**：复制全部后，在腾讯文档里选中第一个目标单元格，"
-            "**双击进入编辑模式**再 Ctrl+V，或直接按行粘贴后手动整理。"
+            "💡 **粘贴方法**：复制全部 → 在腾讯文档里**单击**第一个目标单元格 → Ctrl+V。"
+            "每个计划会自动落到各自单元格里。"
         )
 
         checklist_lines = []
@@ -208,22 +208,16 @@ if uploaded_file is not None:
                     day_diff = (arr_dt.date() - dep_dt.date()).days
                 plus = f" +{day_diff}" if day_diff > 0 else ""
 
-                line1 = f"{ac_str} {dep_time_str} - {arr_time_str}{plus}"
-                line2 = f"{dep_city_str} - {arr_city_str}"
-
-                if "调机" in purpose_str:
-                    content = f"F\n{line1}\n{line2}"
-                else:
-                    content = f"{line1}\n{line2}"
-
-                checklist_lines.append(content)
+                prefix = "F " if "调机" in purpose_str else ""
+                line = f"{prefix}{ac_str} {dep_time_str} - {arr_time_str}{plus} / {dep_city_str} - {arr_city_str}"
+                checklist_lines.append(line)
             except Exception:
                 continue
 
         if not checklist_lines:
             st.warning("⚠️ 未能生成检查单文本。")
         else:
-            all_checklist = "\n\n".join(checklist_lines)
+            all_checklist = "\n".join(checklist_lines)
             st.code(all_checklist, language="text")
 
         # ============================================================
