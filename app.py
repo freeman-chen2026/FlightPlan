@@ -163,7 +163,7 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单（富文本一键复制）
+        #  检查单
         # ============================================================
         st.divider()
         st.subheader("📋 检查单")
@@ -233,14 +233,12 @@ if uploaded_file is not None:
             except Exception:
                 continue
 
-        # 排序：日期 → 机号优先级 → 出发时间
         raw_items.sort(key=lambda x: (
             x["dep_dt"] if x["dep_dt"] else datetime(2100, 1, 1),
             priority_map.get(x["aircraft"], default_priority),
             x["dep_time_str"] or "99:99"
         ))
 
-        # 构建行：日期变化 或 机号变化 → 插空行
         rows = []
         prev_date = None
         prev_ac = None
@@ -291,26 +289,18 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  const TD_STYLE = "text-align: center; vertical-align: middle; " +
-                                   "font-family: 'Times New Roman', Times, serif; " +
-                                   "font-size: 14pt; " +
-                                   "border: 1px solid #000000; " +
-                                   "padding: 4px 8px;";
-
+                  // 关键：不带任何样式，保留目标单元格原有格式
                   function renderRow(row) {{
                     if (row.type === 'blank') {{
-                      return '<tr><td colspan="' + TOTAL_COLS + '" style="' + TD_STYLE + '">&nbsp;</td></tr>';
+                      return '<tr><td colspan="' + TOTAL_COLS + '"><br></td></tr>';
                     }}
-                    return '<tr><td style="' + TD_STYLE + '">' +
+                    return '<tr><td>' +
                            escapeHtml(row.content).split('\\n').join('<br>') +
                            '</td></tr>';
                   }}
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
-                    const html =
-                      '<table style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">' +
-                      rows.map(renderRow).join('') +
-                      '</table>';
+                    const html = '<table>' + rows.map(renderRow).join('') + '</table>';
                     const plain = rows.map(r => r.type === 'blank' ? '' : r.content).join('\\n\\n');
 
                     try {{
