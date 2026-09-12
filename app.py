@@ -275,28 +275,15 @@ if uploaded_file is not None:
                   .btn:hover {{ background: #e63939; }}
                   .btn:active {{ transform: translateY(1px); }}
                   .status {{ margin-left: 12px; color: #555; font-size: 14px; }}
-                  table.preview {{
-                    margin-top: 16px; border-collapse: collapse; width: 100%;
-                  }}
-                  table.preview td {{
-                    padding: 6px 10px;
-                    text-align: center;
-                    vertical-align: middle;
-                    font-family: 'Times New Roman', Times, serif;
-                    font-size: 14pt;
-                    border: 1px solid #000000;
-                    white-space: pre-wrap;
-                    line-height: 1.4;
-                  }}
                 </style>
                 </head>
                 <body>
                 <button class="btn" id="copyBtn">📋 一键复制全部检查单</button>
                 <span class="status" id="status"></span>
-                <table class="preview" id="preview"></table>
 
                 <script>
                   const rows = {rows_json};
+                  const TOTAL_COLS = 30;
 
                   function escapeHtml(s) {{
                     return s.replace(/&/g, '&amp;')
@@ -312,15 +299,12 @@ if uploaded_file is not None:
 
                   function renderRow(row) {{
                     if (row.type === 'blank') {{
-                      return '<tr><td style="' + TD_STYLE + '">&nbsp;</td></tr>';
+                      return '<tr><td colspan="' + TOTAL_COLS + '" style="' + TD_STYLE + '">&nbsp;</td></tr>';
                     }}
                     return '<tr><td style="' + TD_STYLE + '">' +
                            escapeHtml(row.content).split('\\n').join('<br>') +
                            '</td></tr>';
                   }}
-
-                  const previewEl = document.getElementById('preview');
-                  previewEl.innerHTML = rows.map(renderRow).join('');
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
                     const html =
@@ -346,8 +330,7 @@ if uploaded_file is not None:
                 </body>
                 </html>
                 """,
-                height=600,
-                scrolling=True,
+                height=80,
             )
 
         # ============================================================
