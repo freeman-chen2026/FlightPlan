@@ -163,7 +163,7 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单（富文本一键复制，一个计划一个单元格）
+        #  检查单（富文本一键复制，保留居中 / 14号 / Times New Roman / 边框）
         # ============================================================
         st.divider()
         st.subheader("📋 检查单")
@@ -239,12 +239,17 @@ if uploaded_file is not None:
                   .status {{ margin-left: 12px; color: #555; font-size: 14px; }}
                   table.preview {{
                     margin-top: 16px; border-collapse: collapse; width: 100%;
-                    font-family: Consolas, monospace; font-size: 13px;
                   }}
+                  /* 预览样式与要粘贴的样式保持一致 */
                   table.preview td {{
-                    padding: 8px 12px; border: 1px solid #e0e0e0;
-                    vertical-align: top; background: #fafafa;
-                    white-space: pre-wrap; line-height: 1.6;
+                    padding: 6px 10px;
+                    text-align: center;
+                    vertical-align: middle;
+                    font-family: 'Times New Roman', Times, serif;
+                    font-size: 14pt;
+                    border: 1px solid #000000;
+                    white-space: pre-wrap;
+                    line-height: 1.4;
                   }}
                 </style>
                 </head>
@@ -262,17 +267,31 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 预览：每个计划渲染成一个单元格
+                  // 每一格统一的内联样式：居中 / 14号 / Times New Roman / 1px 实线边框
+                  const TD_STYLE = "text-align: center; vertical-align: middle; " +
+                                   "font-family: 'Times New Roman', Times, serif; " +
+                                   "font-size: 14pt; " +
+                                   "border: 1px solid #000000; " +
+                                   "padding: 4px 8px;";
+
+                  // 预览：用表格渲染，和粘贴效果一致
                   const previewEl = document.getElementById('preview');
                   previewEl.innerHTML = items.map(t =>
-                    '<tr><td>' + escapeHtml(t).split('\\n').join('<br>') + '</td></tr>'
+                    '<tr><td style="' + TD_STYLE + '">' +
+                    escapeHtml(t).split('\\n').join('<br>') +
+                    '</td></tr>'
                   ).join('');
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
-                    // 关键：<table><tr><td> 结构，每个计划落一格
-                    const html = '<table>' + items.map(t =>
-                      '<tr><td>' + escapeHtml(t).split('\\n').join('<br>') + '</td></tr>'
-                    ).join('') + '</table>';
+                    // 关键：<table style="border-collapse:collapse"> + 每格内联样式
+                    const html =
+                      '<table style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">' +
+                      items.map(t =>
+                        '<tr><td style="' + TD_STYLE + '">' +
+                        escapeHtml(t).split('\\n').join('<br>') +
+                        '</td></tr>'
+                      ).join('') +
+                      '</table>';
                     const plain = items.join('\\n\\n');
 
                     try {{
@@ -299,7 +318,7 @@ if uploaded_file is not None:
 
             st.caption(
                 "使用方法：点上面的「📋 一键复制全部检查单」 → 到腾讯文档里**单击**第一个目标单元格 → Ctrl+V。"
-                "每个计划会自动落一格，单元格内的换行会保留。"
+                "每个计划会自动落一格，并保留居中、14 号 Times New Roman、1px 实线边框。"
             )
 
         # ============================================================
