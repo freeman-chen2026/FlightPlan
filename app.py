@@ -281,6 +281,7 @@ if uploaded_file is not None:
 
                 <script>
                   const rows = {rows_json};
+                  const TOTAL_COLS = 30;
 
                   function escapeHtml(s) {{
                     return s.replace(/&/g, '&amp;')
@@ -288,21 +289,30 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 只保留你需要的 4 个属性
+                  // 统一单元格样式：居中、Times New Roman、14 号、1px 黑实线
                   const TD_STYLE = "text-align: center; " +
                                    "vertical-align: middle; " +
                                    "font-family: 'Times New Roman', Times, serif; " +
                                    "font-size: 14pt; " +
                                    "border: 1px solid #000000;";
 
-                  // 关键：1 列宽的表格，腾讯文档只会覆盖 A 列
-                  function renderRow(row) {{
-                    if (row.type === 'blank') {{
-                      return '<tr><td style="' + TD_STYLE + '">&nbsp;</td></tr>';
+                  // 数据行：A 列内容 + B~N 列空但保留边框
+                  function renderDataRow(content) {{
+                    const escaped = escapeHtml(content).split('\\n').join('<br>');
+                    let cells = '<td style="' + TD_STYLE + '">' + escaped + '</td>';
+                    for (let i = 1; i < TOTAL_COLS; i++) {{
+                      cells += '<td style="' + TD_STYLE + '">&nbsp;</td>';
                     }}
-                    return '<tr><td style="' + TD_STYLE + '">' +
-                           escapeHtml(row.content).split('\\n').join('<br>') +
-                           '</td></tr>';
+                    return '<tr>' + cells + '</tr>';
+                  }}
+
+                  // 空行：colspan 横跨整行，粘贴后自动合并
+                  function renderBlankRow() {{
+                    return '<tr><td colspan="' + TOTAL_COLS + '" style="' + TD_STYLE + '">&nbsp;</td></tr>';
+                  }}
+
+                  function renderRow(row) {{
+                    return row.type === 'blank' ? renderBlankRow() : renderDataRow(row.content);
                   }}
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
