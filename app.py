@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
 import json
+import io
 from datetime import datetime, timedelta
+from openpyxl import Workbook
+from openpyxl.styles import Alignment
 
 st.set_page_config(page_title="Arinc 飞行计划辅助脚本生成器", layout="centered")
 st.title("✈️ Arinc 飞行计划辅助脚本生成器")
-st.caption("上传 Excel 航段表 → 生成 检查单文本 / PRELIM·PACKAGE 文本 / JS 脚本")
+st.caption("上传 Excel 航段表 → 生成 检查单 xlsx / PRELIM·PACKAGE 文本 / JS 脚本")
 
 uploaded_file = st.file_uploader("📂 上传航班计划 Excel 文件", type=["xlsx"])
 
@@ -162,16 +165,12 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单文本（单行格式，一键复制全部）
+        #  检查单（生成 xlsx 下载 + 预览）
         # ============================================================
         st.divider()
-        st.subheader("📋 检查单文本（一键复制全部）")
-        st.info(
-            "💡 **粘贴方法**：复制全部 → 在腾讯文档里**单击**第一个目标单元格 → Ctrl+V。"
-            "每个计划会自动落到各自单元格里。"
-        )
+        st.subheader("📋 检查单")
 
-        checklist_lines = []
+        checklist_items = []
         for idx, row in df.iterrows():
             try:
                 aircraft = row[col_aircraft]
@@ -208,17 +207,52 @@ if uploaded_file is not None:
                     day_diff = (arr_dt.date() - dep_dt.date()).days
                 plus = f" +{day_diff}" if day_diff > 0 else ""
 
-                prefix = "F " if "调机" in purpose_str else ""
-                line = f"{prefix}{ac_str} {dep_time_str} - {arr_time_str}{plus} / {dep_city_str} - {arr_city_str}"
-                checklist_lines.append(line)
+                line1 = f"{ac_str} {dep_time_str} - {arr_time_str}{plus}"
+                line2 = f"{dep_city_str} - {arr_city_str}"
+
+                if "调机" in purpose_str:
+                    content = f"F\n{line1}\n{line2}"
+                else:
+                    content = f"{line1}\n{line2}"
+
+                checklist_items.append(content)
             except Exception:
                 continue
 
-        if not checklist_lines:
-            st.warning("⚠️ 未能生成检查单文本。")
+        if not checklist_items:
+            st.warning("⚠️ 未能生成检查单。")
         else:
-            all_checklist = "\n".join(checklist_lines)
-            st.code(all_checklist, language="text")
+            # ---- 生成 xlsx（单元格内多行） ----
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "检查单"
+            ws.column_dimensions['A'].width = 45
+            for i, content in enumerate(checklist_items, start=1):
+                cell = ws.cell(row=i, column=1, value=content)
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+
+            st.download_button(
+                label="📥 下载检查单 Excel（单元格内多行，可直接复制粘贴到腾讯文档）",
+                data=buf.getvalue(),
+                file_name="检查单.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+            st.caption(
+                "使用方法：下载后用 Excel 打开 → 选中 A 列所有单元格 → Ctrl+C → "
+                "到腾讯文档里选中起始单元格 → Ctrl+V。单元格内的换行会完整保留。"
+            )
+
+            # ---- 页面预览 ----
+            st.markdown("**预览（页面仅用于查看，复制请用上面的下载文件）**")
+            for i, content in enumerate(checklist_items, start=1):
+                st.markdown(f"**{i}.**")
+                st.code(content, language="text")
 
         # ============================================================
         #  PRELIM / PACKAGE 文本
