@@ -131,7 +131,7 @@ if uploaded_file is not None:
             dt_utc = dt_bj - timedelta(hours=8)
             return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
 
-        # ---------- flights（PRELIM/PACKAGE + JS 用） ----------
+        # ---------- flights ----------
         flights = []
         for idx, row in df.iterrows():
             aircraft = row[col_aircraft]
@@ -163,12 +163,11 @@ if uploaded_file is not None:
         st.success(f"✅ 成功解析 **{len(flights)}** 条有效航段")
 
         # ============================================================
-        #  检查单（富文本一键复制，带排序 / 分组空行）
+        #  检查单（富文本一键复制）
         # ============================================================
         st.divider()
         st.subheader("📋 检查单")
 
-        # 机号优先级（按你给定的顺序）
         preferred_order = [
             "B3926", "B8105", "B8160", "B8262", "B8292", "B8309",
             "N2QE", "N328LM", "N550DR", "N577QT", "N7777U", "N777ZH",
@@ -178,7 +177,6 @@ if uploaded_file is not None:
         priority_map = {ac: i for i, ac in enumerate(preferred_order)}
         default_priority = len(preferred_order)
 
-        # 收集带元数据的检查单条目
         raw_items = []
         for idx, row in df.iterrows():
             try:
@@ -186,10 +184,8 @@ if uploaded_file is not None:
                 if pd.isna(aircraft):
                     continue
                 ac_str = str(aircraft).strip()
-                # 过滤 N/A、NONE 等无效值
                 if ac_str.upper() in ('N/A', 'NA', 'NONE', 'NULL', ''):
                     continue
-                # 过滤含中文的表头行
                 if any('\u4e00' <= ch <= '\u9fff' for ch in ac_str):
                     continue
 
@@ -244,18 +240,20 @@ if uploaded_file is not None:
             x["dep_time_str"] or "99:99"
         ))
 
-        # 构建行：同一天内不同机号之间插入空行
+        # 构建行：日期变化 或 机号变化 → 插空行
         rows = []
         prev_date = None
         prev_ac = None
+        first = True
         for it in raw_items:
             cur_date = it["dep_dt"].date() if it["dep_dt"] else None
             cur_ac = it["aircraft"]
-            if prev_date is not None and cur_date == prev_date and cur_ac != prev_ac:
+            if not first and (cur_date != prev_date or cur_ac != prev_ac):
                 rows.append({"type": "blank"})
             rows.append({"type": "data", "content": it["content"]})
             prev_date = cur_date
             prev_ac = cur_ac
+            first = False
 
         if not rows:
             st.warning("⚠️ 未能生成检查单。")
@@ -306,7 +304,6 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 每一格统一的内联样式
                   const TD_STYLE = "text-align: center; vertical-align: middle; " +
                                    "font-family: 'Times New Roman', Times, serif; " +
                                    "font-size: 14pt; " +
@@ -339,8 +336,7 @@ if uploaded_file is not None:
                           'text/plain': new Blob([plain], {{type: 'text/plain'}})
                         }})
                       ]);
-                      document.getElementById('status').textContent =
-                        '✅ 已复制，去腾讯文档单击第一个单元格直接粘贴';
+                      document.getElementById('status').textContent = '✅ 已复制';
                     }} catch (e) {{
                       document.getElementById('status').textContent =
                         '❌ 复制失败：' + e.message;
@@ -352,11 +348,6 @@ if uploaded_file is not None:
                 """,
                 height=600,
                 scrolling=True,
-            )
-
-            st.caption(
-                "使用方法：点上面的「📋 一键复制全部检查单」 → 到腾讯文档里**单击**第一个目标单元格 → Ctrl+V。"
-                "排序：按日期升序，同一天内按机号优先级，同机号内按出发时间；同一天内不同机号之间自动空一行。"
             )
 
         # ============================================================
