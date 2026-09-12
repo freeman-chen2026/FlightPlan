@@ -289,18 +289,28 @@ if uploaded_file is not None:
                             .replace(/>/g, '&gt;');
                   }}
 
-                  // 关键：不带任何样式，保留目标单元格原有格式
+                  // 只保留你明确要的四个属性：居中、Times New Roman、14号、实线边框
+                  // 不加 padding，避免改变单元格内边距
+                  const TD_STYLE = "text-align: center; " +
+                                   "vertical-align: middle; " +
+                                   "font-family: 'Times New Roman', Times, serif; " +
+                                   "font-size: 14pt; " +
+                                   "border: 1px solid #000000;";
+
                   function renderRow(row) {{
                     if (row.type === 'blank') {{
-                      return '<tr><td colspan="' + TOTAL_COLS + '"><br></td></tr>';
+                      return '<tr><td colspan="' + TOTAL_COLS + '" style="' + TD_STYLE + '">&nbsp;</td></tr>';
                     }}
-                    return '<tr><td>' +
+                    return '<tr><td style="' + TD_STYLE + '">' +
                            escapeHtml(row.content).split('\\n').join('<br>') +
                            '</td></tr>';
                   }}
 
                   document.getElementById('copyBtn').addEventListener('click', async () => {{
-                    const html = '<table>' + rows.map(renderRow).join('') + '</table>';
+                    const html =
+                      '<table style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">' +
+                      rows.map(renderRow).join('') +
+                      '</table>';
                     const plain = rows.map(r => r.type === 'blank' ? '' : r.content).join('\\n\\n');
 
                     try {{
