@@ -119,6 +119,7 @@ if uploaded_file is not None:
             return None
 
         def get_utc_date_str(date_val, time_val):
+            """北京时间 → UTC 日期字符串 DDMMM"""
             dt_date = parse_date_to_dt(date_val)
             if dt_date is None:
                 return None
@@ -130,6 +131,13 @@ if uploaded_file is not None:
                 dt_bj = dt_date
             dt_utc = dt_bj - timedelta(hours=8)
             return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
+
+        def get_bj_date_str(date_val):
+            """北京日期字符串 DDMMM，用于分组"""
+            dt_date = parse_date_to_dt(date_val)
+            if dt_date is None:
+                return None
+            return f"{dt_date.day:02d}{MONTHS[dt_date.month - 1]}"
 
         # ---------- flights ----------
         flights = []
@@ -144,7 +152,8 @@ if uploaded_file is not None:
                 aircraft_str = str(aircraft).strip()
                 origin_str = str(origin).strip().upper()
                 dest_str = str(dest).strip().upper()
-                date_str = get_utc_date_str(date_val, time_val)
+                date_str_utc = get_utc_date_str(date_val, time_val)
+                date_str_bj = get_bj_date_str(date_val)
 
                 if (len(origin_str) == 4 and origin_str.isalpha() and
                     len(dest_str) == 4 and dest_str.isalpha() and
@@ -153,7 +162,8 @@ if uploaded_file is not None:
                         "aircraft": aircraft_str,
                         "origin": origin_str,
                         "dest": dest_str,
-                        "date": date_str
+                        "date": date_str_utc,
+                        "date_bj": date_str_bj,
                     })
 
         if not flights:
@@ -330,50 +340,52 @@ if uploaded_file is not None:
             )
 
         # ============================================================
-        #  PRELIM / PACKAGE 文本（按日期分节 + PRELIM/PACKAGE 之间空行）
+        #  PRELIM / PACKAGE 文本（按北京日期分节，可展开收起）
         # ============================================================
         st.divider()
 
-        # 按 (date, aircraft) 分组
-        date_ac_groups = {}
+        # 按北京日期 + 机号 分组
+        date_groups = {}   # date_bj -> { aircraft -> [flights] }
         for f in flights:
-            if not f["date"]:
+            if not f["date_bj"]:
                 continue
-            key = (f["date"], f["aircraft"])
-            if key not in date_ac_groups:
-                date_ac_groups[key] = []
-            date_ac_groups[key].append(f)
+            d = f["date_bj"]
+            ac = f["aircraft"]
+            if d not in date_groups:
+                date_groups[d] = {}
+            if ac not in date_groups[d]:
+                date_groups[d][ac] = []
+            date_groups[d][ac].append(f)
 
         MONTHS_MAP = {m: i for i, m in enumerate(MONTHS)}
 
-        def date_sort_key(date_str):
-            if not date_str or len(date_str) < 5:
+        def date_bj_sort_key(d):
+            if not d or len(d) < 5:
                 return (99, 0)
             try:
-                day = int(date_str[:2])
+                day = int(d[:2])
             except ValueError:
                 day = 99
-            month = MONTHS_MAP.get(date_str[2:], 0)
+            month = MONTHS_MAP.get(d[2:], 0)
             return (month, day)
 
-        sorted_keys = sorted(
-            date_ac_groups.keys(),
-            key=lambda k: (date_sort_key(k[0]), priority_map.get(k[1], default_priority))
-        )
+        sorted_dates = sorted(date_groups.keys(), key=date_bj_sort_key)
 
-        current_date = None
-        for (date_str, ac) in sorted_keys:
-            if date_str != current_date:
-                st.markdown(f"#### 📅 {date_str}")
-                current_date = date_str
+        for date_bj in sorted_dates:
+            with st.expander(f"📅 {date_bj}", expanded=False):
+                ac_groups = date_groups[date_bj]
+                sorted_acs = sorted(
+                    ac_groups.keys(),
+                    key=lambda a: priority_map.get(a, default_priority)
+                )
+                for ac in sorted_acs:
+                    items = ac_groups[ac]
+                    prelims = [f"PRELIM {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
+                    packages = [f"PACKAGE {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
+                    block = "\n".join(prelims) + "\n\n" + "\n".join(packages)
 
-            items = date_ac_groups[(date_str, ac)]
-            prelims = [f"PRELIM {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
-            packages = [f"PACKAGE {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
-            block = "\n".join(prelims) + "\n\n" + "\n".join(packages)
-
-            st.markdown(f"### {ac}")
-            st.code(block, language="text")
+                    st.markdown(f"**{ac}**")
+                    st.code(block, language="text")
 
         # ============================================================
         #  JavaScript 脚本
