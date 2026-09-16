@@ -330,36 +330,50 @@ if uploaded_file is not None:
             )
 
         # ============================================================
-        #  PRELIM / PACKAGE 文本
+        #  PRELIM / PACKAGE 文本（按日期分节 + PRELIM/PACKAGE 之间空行）
         # ============================================================
         st.divider()
 
-        grouped = {}
-        order = []
+        # 按 (date, aircraft) 分组
+        date_ac_groups = {}
         for f in flights:
             if not f["date"]:
                 continue
-            ac = f["aircraft"]
-            if ac not in grouped:
-                grouped[ac] = []
-                order.append(ac)
-            grouped[ac].append(f)
+            key = (f["date"], f["aircraft"])
+            if key not in date_ac_groups:
+                date_ac_groups[key] = []
+            date_ac_groups[key].append(f)
 
-        sorted_order = [ac for ac in preferred_order if ac in grouped]
-        for ac in order:
-            if ac not in sorted_order:
-                sorted_order.append(ac)
-        order = sorted_order
+        MONTHS_MAP = {m: i for i, m in enumerate(MONTHS)}
 
-        if order:
-            for ac in order:
-                items = grouped[ac]
-                prelims = [f"PRELIM {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
-                packages = [f"PACKAGE {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
-                block = "\n".join(prelims + packages)
+        def date_sort_key(date_str):
+            if not date_str or len(date_str) < 5:
+                return (99, 0)
+            try:
+                day = int(date_str[:2])
+            except ValueError:
+                day = 99
+            month = MONTHS_MAP.get(date_str[2:], 0)
+            return (month, day)
 
-                st.markdown(f"### {ac}")
-                st.code(block, language="text")
+        sorted_keys = sorted(
+            date_ac_groups.keys(),
+            key=lambda k: (date_sort_key(k[0]), priority_map.get(k[1], default_priority))
+        )
+
+        current_date = None
+        for (date_str, ac) in sorted_keys:
+            if date_str != current_date:
+                st.markdown(f"#### 📅 {date_str}")
+                current_date = date_str
+
+            items = date_ac_groups[(date_str, ac)]
+            prelims = [f"PRELIM {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
+            packages = [f"PACKAGE {f['aircraft']} {f['origin']}-{f['dest']} {f['date']}" for f in items]
+            block = "\n".join(prelims) + "\n\n" + "\n".join(packages)
+
+            st.markdown(f"### {ac}")
+            st.code(block, language="text")
 
         # ============================================================
         #  JavaScript 脚本
