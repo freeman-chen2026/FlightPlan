@@ -4,9 +4,8 @@ import pandas as pd
 import json
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Arinc 飞行计划辅助脚本生成器", layout="centered")
-st.title("✈️ Arinc 飞行计划辅助脚本生成器")
-st.caption("上传 Excel 航段表 → 生成 检查单 / PRELIM·PACKAGE 文本 / JS 脚本")
+st.set_page_config(page_title="检查单/飞行计划脚本", layout="centered")
+st.title("检查单/飞行计划脚本")
 
 uploaded_file = st.file_uploader("📂 上传航班计划 Excel 文件", type=["xlsx"])
 
@@ -119,7 +118,6 @@ if uploaded_file is not None:
             return None
 
         def get_utc_date_str(date_val, time_val):
-            """北京时间 → UTC 日期字符串 DDMMM"""
             dt_date = parse_date_to_dt(date_val)
             if dt_date is None:
                 return None
@@ -133,7 +131,6 @@ if uploaded_file is not None:
             return f"{dt_utc.day:02d}{MONTHS[dt_utc.month - 1]}"
 
         def get_bj_date_str(date_val):
-            """北京日期字符串 DDMMM，用于分组"""
             dt_date = parse_date_to_dt(date_val)
             if dt_date is None:
                 return None
@@ -344,8 +341,7 @@ if uploaded_file is not None:
         # ============================================================
         st.divider()
 
-        # 按北京日期 + 机号 分组
-        date_groups = {}   # date_bj -> { aircraft -> [flights] }
+        date_groups = {}
         for f in flights:
             if not f["date_bj"]:
                 continue
