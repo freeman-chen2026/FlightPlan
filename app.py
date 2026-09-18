@@ -3,12 +3,17 @@ import streamlit.components.v1 as components
 import pandas as pd
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="飞行任务工具", layout="centered")
 st.title("飞行任务工具")
+
+# 北京时间时区
+BJ_TZ = timezone(timedelta(hours=8))
+def now_bj():
+    return datetime.now(BJ_TZ).replace(tzinfo=None)
 
 tab1, tab2 = st.tabs(["功能1：检查单/脚本", "功能2：邮件生成"])
 
@@ -552,7 +557,6 @@ with tab2:
         elif not plan_text.strip():
             st.error("请粘贴文本飞行计划")
         else:
-            # ---------- 读取航段表，自动定位标题行 ----------
             try:
                 if flight_file.name.lower().endswith('.csv'):
                     raw = pd.read_csv(flight_file, header=None, dtype=str)
@@ -577,7 +581,6 @@ with tab2:
                 st.error(f"读取航段表失败：{e}")
                 st.stop()
 
-            # ---------- 找列 ----------
             def find_col(df, keywords):
                 for c in df.columns:
                     cs = str(c).strip()
@@ -649,7 +652,6 @@ with tab2:
 
                 st.success(f"✅ 航段表解析成功，共 {len(flight_db)} 条航段")
 
-                # ---------- 解析文本计划 ----------
                 plan_flights = []
                 cur = None
                 expect_route = False
@@ -720,7 +722,7 @@ with tab2:
                     st.warning("未生成任何邮件，请检查航班号和起飞时间是否与航段表一致。")
 
     if st.session_state.f2_flights:
-        now = datetime.now()
+        now = now_bj()
         shown = 0
         for f in st.session_state.f2_flights:
             dep_dt = f['dep_dt']
