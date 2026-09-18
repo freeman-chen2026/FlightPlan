@@ -10,7 +10,6 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="飞行任务工具", layout="centered")
 st.title("飞行任务工具")
 
-# 北京时间时区
 BJ_TZ = timezone(timedelta(hours=8))
 def now_bj():
     return datetime.now(BJ_TZ).replace(tzinfo=None)
@@ -28,7 +27,6 @@ with tab1:
         try:
             df = pd.read_excel(uploaded_file, sheet_name=0)
 
-            # ---------- 列定位 ----------
             col_aircraft = None
             col_origin = None
             col_dest = None
@@ -534,8 +532,6 @@ with tab2:
         "W272": "Andrew.king@aero.bombardier.com",
     }
 
-    if 'f2_sent' not in st.session_state:
-        st.session_state.f2_sent = set()
     if 'f2_flights' not in st.session_state:
         st.session_state.f2_flights = []
 
@@ -543,13 +539,7 @@ with tab2:
     plan_text = st.text_area("粘贴文本飞行计划", height=200, key="f2_plan",
                              placeholder="B652Q 06:00 - 07:55\n北京大兴 - 上海虹桥\nP035,P039,C051\n\nB65AP 07:30 - 09:00\n日本东京 羽田 - 日本福冈\nP032,P036,C050,M021")
 
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        gen_btn = st.button("生成邮件链接", key="f2_gen")
-    with col_b:
-        if st.button("清空已发送标记", key="f2_clear"):
-            st.session_state.f2_sent = set()
-            st.rerun()
+    gen_btn = st.button("生成邮件链接", key="f2_gen")
 
     if gen_btn:
         if flight_file is None:
@@ -729,34 +719,20 @@ with tab2:
             if now >= dep_dt:
                 continue
             shown += 1
-            mail_id = f['mail_id']
-            is_sent = mail_id in st.session_state.f2_sent
             three_h = dep_dt - timedelta(hours=3)
-
-            if is_sent:
-                color = '#c8e6c9'
-            elif now >= three_h:
+            if now >= three_h:
                 color = '#fff9c4'
             else:
                 color = '#f0f0f0'
 
-            col1, col2 = st.columns([5, 1])
-            with col1:
-                st.markdown(
-                    f'<a href="{f["mailto"]}" target="_blank" style="display:block;padding:10px;'
-                    f'background:{color};border:1px solid #ccc;border-radius:4px;'
-                    f'text-decoration:none;color:#0066cc;">{f["text"]}</a>',
-                    unsafe_allow_html=True
-                )
-            with col2:
-                if is_sent:
-                    st.markdown("✅ 已发送")
-                else:
-                    if st.button("标记已发", key=f"sent_{mail_id}"):
-                        st.session_state.f2_sent.add(mail_id)
-                        st.rerun()
+            st.markdown(
+                f'<a href="{f["mailto"]}" target="_blank" style="display:block;padding:10px;margin:5px 0;'
+                f'background:{color};border:1px solid #ccc;border-radius:4px;'
+                f'text-decoration:none;color:#0066cc;">{f["text"]}</a>',
+                unsafe_allow_html=True
+            )
 
         if shown == 0:
-            st.info("所有邮件都已过期或已发送。")
+            st.info("所有邮件都已过期。")
     else:
         st.info("请上传航段表并粘贴文本飞行计划，然后点击生成。")
