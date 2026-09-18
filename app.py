@@ -423,7 +423,7 @@ function fillFlight(index) {
     originInput.dispatchEvent(new Event('blur', { bubbles: true }));
     originInput.blur();
 
-    var destInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[2]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[4]/td[1]/input[1]');
+    var destInput = getElementByXpath('/html/body/div[4]/form/table/tbody/tr/td[1]/div[2]/div[1]/table/tbody/tr[3]/td[2]/table/tbody/tr[4]/td[1]/input[1]');
     if (!destInput) { console.error("未找到目的地机场输入框"); return false; }
     destInput.focus();
     destInput.value = data.dest;
@@ -466,7 +466,6 @@ console.log("📌 输入 fillNext() 填充下一条");
 # 功能2：WX AND NOTAM 邮件生成
 # ============================================================
 with tab2:
-    # 每60秒自动刷新一次
     st_autorefresh(interval=60000, key="f2_refresh")
 
     st.subheader("WX AND NOTAM 邮件生成器")
@@ -553,11 +552,32 @@ with tab2:
         elif not plan_text.strip():
             st.error("请粘贴文本飞行计划")
         else:
-            if flight_file.name.endswith('.csv'):
-                df2 = pd.read_csv(flight_file)
-            else:
-                df2 = pd.read_excel(flight_file)
+            # ---------- 读取航段表，自动定位标题行 ----------
+            try:
+                if flight_file.name.lower().endswith('.csv'):
+                    raw = pd.read_csv(flight_file, header=None, dtype=str)
+                else:
+                    raw = pd.read_excel(flight_file, header=None)
 
+                header_row = None
+                for i in range(min(len(raw), 10)):
+                    vals = [str(v).strip() for v in raw.iloc[i].values if pd.notna(v)]
+                    if '飞机注册号' in vals and '出发地' in vals and '到达地' in vals:
+                        header_row = i
+                        break
+
+                if header_row is None:
+                    st.error("未在航段表中找到标题行（需包含：飞机注册号、出发地、到达地）")
+                    st.stop()
+
+                df2 = raw.iloc[header_row + 1:].copy()
+                df2.columns = [str(v).strip() for v in raw.iloc[header_row].values]
+                df2 = df2.reset_index(drop=True)
+            except Exception as e:
+                st.error(f"读取航段表失败：{e}")
+                st.stop()
+
+            # ---------- 找列 ----------
             def find_col(df, keywords):
                 for c in df.columns:
                     cs = str(c).strip()
@@ -574,35 +594,44 @@ with tab2:
             col_arr_time = find_col(df2, ['预计到达'])
 
             if not all([col_flight, col_dep, col_arr, col_date, col_dep_time]):
-                st.error("航段表缺少必要列（飞机注册号、出发地、到达地、出发日期、计划出发）")
+                st.error(f"航段表缺少必要列。当前列名：{list(df2.columns)}")
             else:
                 def to_time(v):
-                    if v is None or (isinstance(v, float) and pd.isna(v)):
+                    if v is None:
+                        return None
+                    if isinstance(v, float) and pd.isna(v):
                         return None
                     if isinstance(v, (pd.Timestamp, datetime)):
                         return v.strftime('%H:%M')
                     if hasattr(v, 'hour') and hasattr(v, 'minute'):
                         return f"{v.hour:02d}:{v.minute:02d}"
                     s = str(v).strip()
+                    if not s or s.lower() == 'nan' or s.lower() == 'nat':
+                        return None
                     m = re.match(r'^(\d{1,2}):(\d{2})', s)
                     if m:
                         return f"{int(m.group(1)):02d}:{m.group(2)}"
                     return None
 
                 def to_date(v):
-                    if v is None or (isinstance(v, float) and pd.isna(v)):
+                    if v is None:
+                        return None
+                    if isinstance(v, float) and pd.isna(v):
                         return None
                     if isinstance(v, (pd.Timestamp, datetime)):
                         return v.strftime('%Y-%m-%d')
+                    s = str(v).strip()
+                    if not s or s.lower() in ('nan', 'nat'):
+                        return None
                     try:
-                        return pd.to_datetime(v).strftime('%Y-%m-%d')
+                        return pd.to_datetime(s).strftime('%Y-%m-%d')
                     except Exception:
                         return None
 
                 flight_db = []
                 for _, row in df2.iterrows():
                     f_no = str(row[col_flight]).strip() if pd.notna(row[col_flight]) else ''
-                    if not f_no:
+                    if not f_no or f_no.lower() == 'nan':
                         continue
                     date_str = to_date(row[col_date])
                     dep_t = to_time(row[col_dep_time])
@@ -618,6 +647,9 @@ with tab2:
                         'arr_time': arr_t or ''
                     })
 
+                st.success(f"✅ 航段表解析成功，共 {len(flight_db)} 条航段")
+
+                # ---------- 解析文本计划 ----------
                 plan_flights = []
                 cur = None
                 expect_route = False
@@ -645,6 +677,7 @@ with tab2:
 
                 MONTHS2 = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
                 result = []
+                unmatched = []
                 for pf in plan_flights:
                     match = None
                     for fd in flight_db:
@@ -652,6 +685,7 @@ with tab2:
                             match = fd
                             break
                     if not match:
+                        unmatched.append(f"{pf['flight']} {pf['dep_time']}")
                         continue
 
                     try:
@@ -663,6 +697,7 @@ with tab2:
                     recipients = pilots[:2]
                     emails = [PILOT_MAP.get(r) for r in recipients if PILOT_MAP.get(r)]
                     if not emails:
+                        unmatched.append(f"{pf['flight']} {pf['dep_time']} (无邮箱)")
                         continue
 
                     d = datetime.strptime(match['date'], '%Y-%m-%d')
@@ -679,8 +714,10 @@ with tab2:
                     })
 
                 st.session_state.f2_flights = result
+                if unmatched:
+                    st.warning("以下航班未匹配到航段表或邮箱：\n" + "\n".join(unmatched))
                 if not result:
-                    st.warning("未生成任何邮件，请检查航段表和文本计划是否匹配。")
+                    st.warning("未生成任何邮件，请检查航班号和起飞时间是否与航段表一致。")
 
     if st.session_state.f2_flights:
         now = datetime.now()
