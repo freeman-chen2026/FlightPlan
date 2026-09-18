@@ -469,7 +469,7 @@ console.log("📌 输入 fillNext() 填充下一条");
 # 功能2：WX AND NOTAM 邮件生成
 # ============================================================
 with tab2:
-    st_autorefresh(interval=60000, key="f2_refresh")
+    st_autorefresh(interval=600000, key="f2_refresh")
 
     st.subheader("WX AND NOTAM 邮件生成器")
 
