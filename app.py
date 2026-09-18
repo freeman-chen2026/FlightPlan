@@ -714,6 +714,7 @@ with tab2:
     if st.session_state.f2_flights:
         now = now_bj()
         shown = 0
+        to_delete = []
         for f in st.session_state.f2_flights:
             dep_dt = f['dep_dt']
             if now >= dep_dt:
@@ -725,14 +726,25 @@ with tab2:
             else:
                 color = '#f0f0f0'
 
-            st.markdown(
-                f'<a href="{f["mailto"]}" target="_blank" style="display:block;padding:10px;margin:5px 0;'
-                f'background:{color};border:1px solid #ccc;border-radius:4px;'
-                f'text-decoration:none;color:#0066cc;">{f["text"]}</a>',
-                unsafe_allow_html=True
-            )
+            col1, col2 = st.columns([12, 1])
+            with col1:
+                st.markdown(
+                    f'<a href="{f["mailto"]}" target="_blank" style="display:block;padding:10px;'
+                    f'background:{color};border:1px solid #ccc;border-radius:4px;'
+                    f'text-decoration:none;color:#0066cc;">{f["text"]}</a>',
+                    unsafe_allow_html=True
+                )
+            with col2:
+                if st.button("✕", key=f"del_{f['mail_id']}", help="删除此条"):
+                    to_delete.append(f['mail_id'])
+
+        if to_delete:
+            st.session_state.f2_flights = [
+                x for x in st.session_state.f2_flights if x['mail_id'] not in to_delete
+            ]
+            st.rerun()
 
         if shown == 0:
-            st.info("所有邮件都已过期。")
+            st.info("所有邮件都已过期或已手动删除。")
     else:
         st.info("请上传航段表并粘贴文本飞行计划，然后点击生成。")
